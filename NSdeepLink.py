@@ -488,7 +488,7 @@ def main():
         deeplink_references = search_for_deeplink_handling_in_code(code_directory)
         print_deeplink_references(deeplink_references)
 
-     if args.output:
+    if args.output:
         try:
             with open(args.output, "w", encoding="utf-8") as f:
                 if deeplinks:
