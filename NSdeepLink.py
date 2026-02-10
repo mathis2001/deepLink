@@ -146,7 +146,7 @@ def print_table(deeplinks):
     Function for table formatting
     """
     if not deeplinks:
-        print(Fore.RED + "[!] " + Fore.RESET + "No deeplink found")
+        print(Fore.RED + "[!] " + Fore.RESET + "No Deeplink Found")
         return
     headers = ["Deeplink", "Scheme", "Authority", "Port", "Path", "Pattern", "AutoVerify"]
     print("\n" + Fore.CYAN + "[*] " + Fore.RESET + "Searching Deeplinks" +"\n")
@@ -258,7 +258,7 @@ def parse_apk(apk_path):
     return deeplinks
 
 
-def parse_ipa(ipa_path, verify=False, bundle_id=None):
+def parse_ipa(ipa_path, verify=False):
     """
     Parse an IPA file to extract URL schemes and Universal Links (Associated Domains)
     """
@@ -267,36 +267,40 @@ def parse_ipa(ipa_path, verify=False, bundle_id=None):
 
     try:
         with zipfile.ZipFile(ipa_path, 'r') as ipa:
-            # Find the .app folder inside Payload/
+            # Find the .app folder inside Payload
             app_folder = [f for f in ipa.namelist() if f.startswith("Payload/") and f.endswith(".app/")]
             if not app_folder:
                 print(f"[!] No .app folder found in {ipa_path}")
                 return []
             app_folder = app_folder[0]
 
-            # Read Info.plist
+            # parse Info.plist info
             plist_path = app_folder + "Info.plist"
             with ipa.open(plist_path) as f:
                 plist_data = plistlib.load(f)
 
-            # Extract CFBundleURLTypes (custom schemes)
+            # Custom URL schemes
             for url_type in plist_data.get("CFBundleURLTypes", []):
                 schemes = url_type.get("CFBundleURLSchemes", [])
                 for scheme in schemes:
                     deeplinks.append([f"{scheme}://", scheme, "", "", "", "", "N/A"])
 
-            # Extract Associated Domains (Universal Links)
-            domains = plist_data.get("com.apple.developer.associated-domains", [])
-            for d in domains:
-                # Remove prefix like applinks:
-                if d.startswith("applinks:"):
-                    host = d.split("applinks:")[1]
-                    associated_domains.append(host)
-                    deeplinks.append([f"https://{host}", "https", host, "", "", "", "N/A"])
+            # Extract info from Mach-O binary
+            app_name = app_folder.rstrip("/").split("/")[-1].replace(".app", "")
+            macho_path = app_folder + app_name
+            with ipa.open(macho_path) as f:
+                binary_data = f.read()
+                matches = re.findall(rb'applinks:([^\x00\s]+)', binary_data)
+                for m in matches:
+                    host = m.decode('utf-8', errors='ignore')
+                    clean_host = clean_string(host)
+                    if host not in associated_domains:
+                        associated_domains.append(clean_host)
+                        deeplinks.append([f"https://{clean_host}", "https", clean_host, "", "", "", "N/A"])
 
-            # Verify AASA if requested
-            if verify and associated_domains and bundle_id:
-                results = verify_aasa(associated_domains, bundle_id)
+            # Optional AASA verification
+            if verify and associated_domains:
+                results = verify_aasa(associated_domains)
                 print_verify_table(results)
 
     except Exception as e:
@@ -325,6 +329,15 @@ def parse_strings(strings_file_path):
         print(f"{Fore.RED}[!]{Fore.RESET} Error parsing strings : {e}")
 
     return string_map
+
+def clean_string(value):
+    if not value:
+        return value
+    # Remove trailing whitespace and stray XML tags
+    value = value.strip()
+    value = re.sub(r'</?string>', '', value)  # remove <string> or </string>
+    return value
+
 
 def replace_string_reference(value, string_map):
     """
