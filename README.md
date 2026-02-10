@@ -1,5 +1,5 @@
 # NSdeepLink
-Not So deepLink is a python script allowing to list, verify and exploit deeplinks from Android apps using an ADB access or an APK file.
+Not So deepLink is a python script allowing to list, verify and exploit deeplinks and universal links from Android and iOS apps using an ADB access or an APK/IPA file.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ $ chmod +x NSdeepLink.py
 ## Usage
 
 ```
-$ ./NSdeepLink.py [-h] (--adb | --apk APK | -l LAUNCH | -c CODE_SEARCH) [-p PACKAGE] [-s SERIAL] [-v] [-o]
+$ ./NSdeepLink.py [-h] (--adb | --apk APK | --ipa IPA | -l LAUNCH | -c CODE_SEARCH) [-p PACKAGE] [-s SERIAL] [-v] [-o]
 ```
 
 ### List Deeplinks using ADB
@@ -37,13 +37,19 @@ $ ./NSdeepLink.py --adb -p com.example.xyz [--verify]
 $ ./NSdeepLink.py --apk /path/to/app.apk [--verify]
 ```
 
-#### Open a specific deeplink
+### List Universal Links from an IPA
+
+```
+$ ./NSdeepLink.py --ipa /path/to/app.ipa [--verify]
+```
+
+#### Open a specific deeplink (Android Only)
 
 ```
 $ ./NSdeepLink.py -l app://deeplink.xyz
 ```
 
-#### Search for potential deeplinks handling in Java / Kotlin code
+#### Search for potential deeplinks handling in Java / Kotlin code (Android Only)
 
 ```
 $ ./NSdeepLink.py -c /path/to/project
@@ -55,7 +61,8 @@ $ ./NSdeepLink.py -c /path/to/project
 options:
   -h, --help            show this help message and exit
   --adb                 ADB Analyze
-  --apk APK             APK analyze
+  --apk APK             APK Analyze
+  --ipa IPA             IPA Analyze
   -l LAUNCH, --launch LAUNCH
                         Launch a deeplink
   -c CODE_SEARCH, --code-search CODE_SEARCH
