@@ -146,7 +146,7 @@ def print_table(deeplinks):
     Function for table formatting
     """
     if not deeplinks:
-        print(Fore.RED + "[!] " + Fore.RESET + "Aucun deeplink trouvé")
+        print(Fore.RED + "[!] " + Fore.RESET + "No deeplink found")
         return
     headers = ["Deeplink", "Scheme", "Authority", "Port", "Path", "Pattern", "AutoVerify"]
     print("\n" + Fore.CYAN + "[*] " + Fore.RESET + "Searching Deeplinks" +"\n")
@@ -415,7 +415,7 @@ def verify_aasa(hosts, bundle_id):
 
 def print_verify_table(results):
     if not results:
-        print(Fore.RED + "[!] " + Fore.RESET + "Aucun host à vérifier")
+        print(Fore.RED + "[!] " + Fore.RESET + "No host to verify")
         return
     headers = ["Host", "Package", "Fingerprints", "Status"]
     print("\n" + Fore.CYAN + "[*] " + Fore.RESET + "Verifying deeplinks" +"\n")
