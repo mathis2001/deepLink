@@ -7,6 +7,8 @@ import requests
 import xml.etree.ElementTree as ET
 from tabulate import tabulate
 from colorama import Fore
+import zipfile
+import plistlib
 
 
 def banner():
@@ -255,6 +257,54 @@ def parse_apk(apk_path):
 
     return deeplinks
 
+
+def parse_ipa(ipa_path, verify=False, bundle_id=None):
+    """
+    Parse an IPA file to extract URL schemes and Universal Links (Associated Domains)
+    """
+    deeplinks = []
+    associated_domains = []
+
+    try:
+        with zipfile.ZipFile(ipa_path, 'r') as ipa:
+            # Find the .app folder inside Payload/
+            app_folder = [f for f in ipa.namelist() if f.startswith("Payload/") and f.endswith(".app/")]
+            if not app_folder:
+                print(f"[!] No .app folder found in {ipa_path}")
+                return []
+            app_folder = app_folder[0]
+
+            # Read Info.plist
+            plist_path = app_folder + "Info.plist"
+            with ipa.open(plist_path) as f:
+                plist_data = plistlib.load(f)
+
+            # Extract CFBundleURLTypes (custom schemes)
+            for url_type in plist_data.get("CFBundleURLTypes", []):
+                schemes = url_type.get("CFBundleURLSchemes", [])
+                for scheme in schemes:
+                    deeplinks.append([f"{scheme}://", scheme, "", "", "", "", "N/A"])
+
+            # Extract Associated Domains (Universal Links)
+            domains = plist_data.get("com.apple.developer.associated-domains", [])
+            for d in domains:
+                # Remove prefix like applinks:
+                if d.startswith("applinks:"):
+                    host = d.split("applinks:")[1]
+                    associated_domains.append(host)
+                    deeplinks.append([f"https://{host}", "https", host, "", "", "", "N/A"])
+
+            # Verify AASA if requested
+            if verify and associated_domains and bundle_id:
+                results = verify_aasa(associated_domains, bundle_id)
+                print_verify_table(results)
+
+    except Exception as e:
+        print(f"[!] Error parsing IPA: {e}")
+
+    return deeplinks
+
+
 def parse_strings(strings_file_path):
     """
     Parse strings.xml to build a mapping of string references (e.g., @string/foo) to actual string values.
@@ -326,6 +376,40 @@ def verify_assetlinks(hosts, package):
                 results.append([host, "-", "-", f"HTTP {r.status_code}"])
         except Exception as e:
             results.append([host, "-", "-", f"Erreur: {e}"])
+    return results
+
+
+def verify_aasa(hosts, bundle_id):
+    """
+    Verify Apple App Site Association (AASA) files for Universal Links
+    """
+    results = []
+    headers = {"Accept": "application/json"}
+
+    for host in hosts:
+        url = f"https://{host}/.well-known/apple-app-site-association"
+        try:
+            r = requests.get(url, headers=headers, timeout=5)
+            if r.status_code == 200:
+                try:
+                    data = r.json()
+                    paths = []
+                    applinks = data.get("applinks", {})
+                    details = applinks.get("details", [])
+                    match = False
+                    for detail in details:
+                        app_id = detail.get("appID")
+                        if app_id and bundle_id in app_id:
+                            match = True
+                        paths.append(",".join(detail.get("paths", [])))
+                    results.append([host, bundle_id, "\n".join(paths), "OK" if match else "NOK"])
+                except Exception:
+                    results.append([host, bundle_id, "-", "Invalid JSON"])
+            else:
+                results.append([host, bundle_id, "-", f"HTTP {r.status_code}"])
+        except Exception as e:
+            results.append([host, bundle_id, "-", f"Error: {e}"])
+
     return results
 
 
@@ -446,6 +530,7 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--adb", action="store_true", help="ADB Analyze")
     group.add_argument("--apk", type=str, help="APK analyze")
+    group.add_argument("--ipa", type=str, help="IPA analyze")
     group.add_argument("-l", "--launch", type=str, help="Launch a deeplink")
     group.add_argument("-c", "--code-search", type=str, help="Search for potential deeplink handling in JAVA / Kotlin code")
     
@@ -466,18 +551,31 @@ def main():
     elif args.apk:
         deeplinks = parse_apk(args.apk)
 
+    elif args.ipa:
+        deeplinks = parse_ipa(args.ipa)
+
+
     if deeplinks:
         print_table(deeplinks)
 
     # Extraire les hosts pour vérification
     if args.verify and deeplinks:
-        hosts = [d[2] for d in deeplinks if d[2]]
-        hosts = list(set(hosts))  # uniques
-        if args.package:
-            results = verify_assetlinks(hosts, args.package)
+        hosts = [d[2] for d in deeplinks if d[2]]  # extraire les hosts uniques
+        hosts = list(set(hosts))
+
+        results = []
+
+        if args.ipa:
+            results = verify_aasa(hosts, args.package)
         else:
-            results = verify_assetlinks(hosts, None)
+            # Android: vérifier les assetlinks.json
+            if args.package:
+                results = verify_assetlinks(hosts, args.package)
+            else:
+                results = verify_assetlinks(hosts, None)
+
         print_verify_table(results)
+
 
     if args.launch:
         launch_deeplink(args.launch, args.serial)
